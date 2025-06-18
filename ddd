@@ -1,0 +1,77 @@
+import subprocess
+import signal
+import sys
+import glob
+
+def find_usb_camera():
+    """Поиск подключенной USB-камеры"""
+    cameras = glob.glob('/dev/video*')
+    if not cameras:
+        print("Ошибка: USB-камера не найдена!")
+        print("Проверьте подключение и попробуйте:")
+        print("ls /dev/video*")
+        return None
+    return cameras[0]  # Берём первую найденную камеру
+
+def start_stream():
+    camera = find_usb_camera()
+    if not camera:
+        sys.exit(1)
+
+    # Параметры потока
+    RTMP_SERVER = "rtmp://ваш_сервер_IP/live"  # Например: rtmp://192.168.1.100/live
+    STREAM_KEY = "ваш_ключ"                    # Например: usb_stream_123
+    
+    # Команда FFmpeg (основные параметры)
+    base_cmd = [
+        "ffmpeg",
+        "-f", "v4l2",                     # Формат Video4Linux2 для USB-камер
+        "-input_format", "mjpeg",          # Формат сжатия (MJPEG для большинства USB-камер)
+        "-video_size", "1280x720",         # Разрешение
+        "-framerate", "30",                # FPS
+        "-i", camera,                      # Источник видео (/dev/video0)
+    ]
+
+    # Дополнительные опции
+    video_opts = [
+        "-c:v", "libx264",                # Программное кодирование (менее нагрузочно, чем h264_omx для USB)
+        "-preset", "ultrafast",
+        "-tune", "zerolatency",
+        "-b:v", "2M",                     # Битрейт
+        "-g", "60",                       # Интервал между ключевыми кадрами
+        "-f", "flv"
+    ]
+
+    # Собираем полную команду
+    full_cmd = base_cmd + video_opts + [f"{RTMP_SERVER}/{STREAM_KEY}"]
+    
+    # Запуск процесса
+    process = subprocess.Popen(
+        full_cmd,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+
+    # Логирование ошибок в реальном времени
+    def log_errors():
+        while True:
+            line = process.stderr.readline()
+            if not line:
+                break
+            sys.stderr.write(line)
+
+    # Обработка Ctrl+C
+    def signal_handler(sig, frame):
+        print("\nОстановка трансляции...")
+        process.terminate()
+        log_errors()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    print(f"Трансляция запущена с {camera} -> {RTMP_SERVER}/{STREAM_KEY}")
+    print("Нажмите Ctrl+C для остановки")
+    log_errors()
+
+if __name__ == "__main__":
+    start_stream()
