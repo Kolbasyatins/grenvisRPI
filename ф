@@ -1,0 +1,1 @@
+ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=30 -c:v libx264 -f flv rtmp://ваш_сервер/live/test_key
